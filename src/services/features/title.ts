@@ -3,6 +3,7 @@ import { Storage } from "@plasmohq/storage"
 import { getOllamaURL } from "../ai/ollama"
 import { cleanUrl } from "@/libs/clean-url"
 import { HumanMessage } from "@langchain/core/messages"
+import { isConversationMessage } from "@/libs/mcp/utils"
 import { removeReasoning } from "@/libs/reasoning"
 import { ChatHistory } from "@/store/option"
 const storage = new Storage()
@@ -30,13 +31,17 @@ Shakespeare Analyse Literarische
 Response:`
 
 const formatHistoryAsQuery = (history: ChatHistory): string => {
-  if (history.length === 0) return ""
+  const conversationHistory = history.filter((message) =>
+    isConversationMessage(message)
+  )
 
-  if (history.length === 1) {
-    return history[0].content
+  if (conversationHistory.length === 0) return ""
+
+  if (conversationHistory.length === 1) {
+    return conversationHistory[0].content
   }
 
-  return history
+  return conversationHistory
     .map(
       (msg) =>
         `${msg.role === "user" ? "User" : "Assistant"}: ${removeReasoning(msg.content)}`

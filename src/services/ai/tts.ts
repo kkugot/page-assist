@@ -7,7 +7,12 @@ const storage2 = new Storage({
 
 const DEFAULT_TTS_PROVIDER = "browser"
 
-const AVAILABLE_TTS_PROVIDERS = ["browser", "elevenlabs"] as const
+const AVAILABLE_TTS_PROVIDERS = [
+  "browser",
+  "elevenlabs",
+  "openai",
+  "mistral"
+] as const
 
 export const getTTSProvider = async (): Promise<
   (typeof AVAILABLE_TTS_PROVIDERS)[number]
@@ -107,7 +112,7 @@ export const setOpenAITTSBaseUrl = async (openAITTSBaseUrl: string) => {
 
 export const getOpenAITTSApiKey = async () => {
   const data = await storage.get("openAITTSApiKey")
-  return data || ''
+  return data || ""
 }
 
 export const getOpenAITTSModel = async () => {
@@ -137,6 +142,48 @@ export const getOpenAITTSVoice = async () => {
 
 export const setOpenAITTSVoice = async (openAITTSVoice: string) => {
   await storage.set("openAITTSVoice", openAITTSVoice)
+}
+
+export const getMistralTTSBaseUrl = async () => {
+  const data = await storage.get("mistralTTSBaseUrl")
+  if (!data || data.length === 0) {
+    return "https://api.mistral.ai/v1"
+  }
+  return data
+}
+
+export const setMistralTTSBaseUrl = async (mistralTTSBaseUrl: string) => {
+  await storage.set("mistralTTSBaseUrl", mistralTTSBaseUrl)
+}
+
+export const getMistralTTSApiKey = async () => {
+  const data = await storage.get("mistralTTSApiKey")
+  return data || ""
+}
+
+export const setMistralTTSApiKey = async (mistralTTSApiKey: string) => {
+  await storage.set("mistralTTSApiKey", mistralTTSApiKey)
+}
+
+export const getMistralTTSModel = async () => {
+  const data = await storage.get("mistralTTSModel")
+  if (!data || data.length === 0) {
+    return "voxtral-mini-tts-2603"
+  }
+  return data
+}
+
+export const setMistralTTSModel = async (mistralTTSModel: string) => {
+  await storage.set("mistralTTSModel", mistralTTSModel)
+}
+
+export const getMistralTTSVoiceId = async () => {
+  const data = await storage.get("mistralTTSVoiceId")
+  return data || ""
+}
+
+export const setMistralTTSVoiceId = async (mistralTTSVoiceId: string) => {
+  await storage.set("mistralTTSVoiceId", mistralTTSVoiceId)
 }
 
 
@@ -200,9 +247,14 @@ export const getTTSSettings = async () => {
     openAITTSApiKey,
     openAITTSModel,
     openAITTSVoice,
+    // MISTRAL
+    mistralTTSBaseUrl,
+    mistralTTSApiKey,
+    mistralTTSModel,
+    mistralTTSVoiceId,
     // UTILS
     ttsAutoPlay,
-    playbackSpeed,
+    playbackSpeed
   ] = await Promise.all([
     isTTSEnabled(),
     getTTSProvider(),
@@ -214,14 +266,19 @@ export const getTTSSettings = async () => {
     getElevenLabsModel(),
     getResponseSplitting(),
     getRemoveReasoningTagTTS(),
-    // OPENAI 
+    // OPENAI
     getOpenAITTSBaseUrl(),
     getOpenAITTSApiKey(),
     getOpenAITTSModel(),
     getOpenAITTSVoice(),
+    // MISTRAL
+    getMistralTTSBaseUrl(),
+    getMistralTTSApiKey(),
+    getMistralTTSModel(),
+    getMistralTTSVoiceId(),
     // UTILS
     isTTSAutoPlayEnabled(),
-    getSpeechPlaybackSpeed(),
+    getSpeechPlaybackSpeed()
   ])
 
   return {
@@ -240,8 +297,13 @@ export const getTTSSettings = async () => {
     openAITTSApiKey,
     openAITTSModel,
     openAITTSVoice,
+    // MISTRAL
+    mistralTTSBaseUrl,
+    mistralTTSApiKey,
+    mistralTTSModel,
+    mistralTTSVoiceId,
     ttsAutoPlay,
-    playbackSpeed,
+    playbackSpeed
   }
 }
 
@@ -259,8 +321,12 @@ export const setTTSSettings = async ({
   openAITTSApiKey,
   openAITTSModel,
   openAITTSVoice,
+  mistralTTSBaseUrl,
+  mistralTTSApiKey,
+  mistralTTSModel,
+  mistralTTSVoiceId,
   ttsAutoPlay,
-  playbackSpeed,
+  playbackSpeed
 }: {
   ttsEnabled: boolean
   ttsProvider: string
@@ -271,12 +337,16 @@ export const setTTSSettings = async ({
   elevenLabsModel: string
   responseSplitting: string
   removeReasoningTagTTS: boolean
-  openAITTSBaseUrl: string,
-  openAITTSApiKey: string,
-  openAITTSModel: string,
-  openAITTSVoice: string,
-  ttsAutoPlay: boolean,
-  playbackSpeed: number,
+  openAITTSBaseUrl: string
+  openAITTSApiKey: string
+  openAITTSModel: string
+  openAITTSVoice: string
+  mistralTTSBaseUrl: string
+  mistralTTSApiKey: string
+  mistralTTSModel: string
+  mistralTTSVoiceId: string
+  ttsAutoPlay: boolean
+  playbackSpeed: number
 }) => {
   await Promise.all([
     setTTSEnabled(ttsEnabled),
@@ -292,7 +362,11 @@ export const setTTSSettings = async ({
     setOpenAITTSApiKey(openAITTSApiKey),
     setOpenAITTSModel(openAITTSModel),
     setOpenAITTSVoice(openAITTSVoice),
+    setMistralTTSBaseUrl(mistralTTSBaseUrl),
+    setMistralTTSApiKey(mistralTTSApiKey),
+    setMistralTTSModel(mistralTTSModel),
+    setMistralTTSVoiceId(mistralTTSVoiceId),
     setTTSAutoPlayEnabled(ttsAutoPlay),
-    setSpeechPlaybackSpeed(playbackSpeed),
+    setSpeechPlaybackSpeed(playbackSpeed)
   ])
 }

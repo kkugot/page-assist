@@ -3,16 +3,16 @@ import {
   getIsSimpleInternetSearch,
   totalSearchResults,
   getPerplexityApiKey
-} from "@/services/search"
+} from "@/services/features/search"
 import { pageAssistEmbeddingModel } from "@/models/embedding"
 import type { Document } from "@langchain/core/documents"
-import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory"
+import { PageAssistVectorStore } from "@/libs/PageAssistVectorStore"
 import { PageAssistHtmlLoader } from "@/loader/html"
 import {
   defaultEmbeddingModelForRag,
   getOllamaURL,
   getSelectedModel
-} from "@/services/ollama"
+} from "@/services/ai/ollama"
 import { getPageAssistTextSplitter } from "@/utils/text-splitter"
 
 interface PerplexitySearchResult {
@@ -77,14 +77,14 @@ export const perplexityAPISearch = async (query: string) => {
   const textSplitter = await getPageAssistTextSplitter()
 
   const chunks = await textSplitter.splitDocuments(docs)
-  const store = new MemoryVectorStore(ollamaEmbedding)
+  const store = new PageAssistVectorStore(ollamaEmbedding, { knownledge_id: "web-search", file_id: "temp_uploaded_files" })
   await store.addDocuments(chunks)
 
-  const resultsWithEmbeddings = await store.similaritySearch(query, 3)
+  const resultsWithEmbeddings = await store.similaritySearchKB(query, 3)
 
   const searchResult = resultsWithEmbeddings.map((result) => {
     return {
-      url: result.metadata.url,
+      url: (result.metadata as any).url,
       content: result.pageContent
     }
   })

@@ -23,6 +23,7 @@ import {
   streamChatResponse,
   type StreamConfig
 } from "./sharedStreaming"
+import { STREAM_REVEAL } from "../streamingConfig"
 
 export const ragMode = async (
   message: string,

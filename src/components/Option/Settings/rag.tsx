@@ -16,15 +16,12 @@ import { getNoOfRetrievedDocs, getTotalFilePerKB } from "@/services/features/app
 import { SidepanelRag } from "./sidepanel-rag"
 import { ProviderIcons } from "@/components/Common/ProviderIcon"
 import { SettingTitle } from "./title"
-import { MemorySettings } from "./memory"
-import { useStorage } from "@plasmohq/storage/hook"
 
 export const RagSettings = () => {
   const { t } = useTranslation("settings")
   const [form] = Form.useForm()
   const splittingStrategy = Form.useWatch("splittingStrategy", form)
   const queryClient = useQueryClient()
-  const [enableMemory] = useStorage("enableMemory", false)
 
   const { data: ollamaInfo, status } = useQuery({
     queryKey: ["fetchRAGSettings"],
@@ -141,7 +138,7 @@ export const RagSettings = () => {
                   style={{ width: "100%" }}
                   className="mt-4"
                   filterOption={(input, option) =>
-                    option.label.key
+                    String(option?.value ?? "")
                       .toLowerCase()
                       .indexOf(input.toLowerCase()) >= 0
                   }
@@ -286,11 +283,6 @@ export const RagSettings = () => {
 
           <SidepanelRag />
 
-          {enableMemory && (
-            <div>
-              <MemorySettings />
-            </div>
-          )}
 
           <div>
             <div>

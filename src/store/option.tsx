@@ -3,6 +3,12 @@ import { ChatDocuments } from "@/models/ChatTypes"
 import { create } from "zustand"
 import { type UploadedFile } from "@/db/dexie/types"
 import { isFireFoxPrivateMode } from "@/utils/is-private-mode"
+import {
+  ChatActionInfo,
+  ChatMessageKind,
+  McpPendingApprovalRequest,
+  McpToolCall
+} from "@/libs/mcp/types"
 
 type WebSearch = {
   search_engine: string
@@ -26,6 +32,13 @@ export type Message = {
   modelName?: string
   modelImage?: string
   documents?: ChatDocuments
+  generationInfo?: any
+  messageKind?: ChatMessageKind
+  toolCalls?: McpToolCall[]
+  toolCallId?: string
+  toolName?: string
+  toolServerName?: string
+  toolError?: boolean
   // UI-only metadata (view-only)
   uiStreaming?: {
     lastFlushedAt?: number
@@ -35,12 +48,23 @@ export type Message = {
 }
 
 export type ChatHistory = {
-  role: "user" | "assistant" | "system"
+  role: "user" | "assistant" | "system" | "tool"
   content: string
   image?: string
   images?: string[]
   messageType?: string
+  messageKind?: ChatMessageKind
+  toolCalls?: McpToolCall[]
+  toolCallId?: string
+  toolName?: string
+  toolServerName?: string
+  toolError?: boolean
 }[]
+
+type PendingMcpApproval = McpPendingApprovalRequest & {
+  approve: () => void
+  reject: (reason?: string) => void
+}
 
 type State = {
   messages: Message[]
@@ -95,8 +119,11 @@ type State = {
   contextFiles: UploadedFile[]
   setContextFiles: (contextFiles: UploadedFile[]) => void
 
-  actionInfo: string | null
-  setActionInfo: (actionInfo: string) => void
+  actionInfo: ChatActionInfo | null
+  setActionInfo: (actionInfo: ChatActionInfo | null) => void
+
+  pendingMcpApproval: PendingMcpApproval | null
+  setPendingMcpApproval: (request: PendingMcpApproval | null) => void
 
   fileRetrievalEnabled: boolean
   setFileRetrievalEnabled: (fileRetrievalEnabled: boolean) => void
@@ -155,6 +182,9 @@ export const useStoreMessageOption = create<State>((set) => ({
 
   actionInfo: null,
   setActionInfo: (actionInfo) => set({ actionInfo }),
+
+  pendingMcpApproval: null,
+  setPendingMcpApproval: (pendingMcpApproval) => set({ pendingMcpApproval }),
 
   fileRetrievalEnabled: false,
   setFileRetrievalEnabled: (fileRetrievalEnabled) =>

@@ -72,10 +72,12 @@ export const useMessage = () => {
     isSearchingInternet,
     temporaryChat,
     setTemporaryChat,
+    actionInfo,
     uploadedFiles,
     documentContext,
     fileRetrievalEnabled,
-    setActionInfo
+    setActionInfo,
+    setPendingMcpApproval
   } = useStoreMessageOption()
   const [defaultInternetSearchOn] = useStorage("defaultInternetSearchOn", false)
 
@@ -113,6 +115,8 @@ export const useMessage = () => {
     setUseOCR
   } = useStoreMessage()
   const [sidepanelTemporaryChat] = useStorage("sidepanelTemporaryChat", false)
+  const [mcpHumanInLoop] = useStorage("mcpHumanInLoop", false)
+  const [enableAgentWebSearch] = useStorage("enableAgentWebSearch", true)
   const [speechToTextLanguage, setSpeechToTextLanguage] = useStorage(
     "speechToTextLanguage",
     "en-US"
@@ -142,6 +146,8 @@ export const useMessage = () => {
     if (sidepanelTemporaryChat) {
       setTemporaryChat(true)
     }
+    setActionInfo(null)
+    setPendingMcpApproval(null)
   }
 
   const saveMessageOnSuccess = createSaveMessageOnSuccess(
@@ -235,7 +241,8 @@ export const useMessage = () => {
       )
     } else {
       if (chatMode === "normal") {
-        if (webSearch) {
+        const useAgentWebSearch = webSearch && enableAgentWebSearch
+        if (webSearch && !useAgentWebSearch) {
           await searchChatMode(
             message,
             image,
@@ -256,7 +263,14 @@ export const useMessage = () => {
             {
               ...commonParams,
               selectedSystemPrompt: selectedSystemPrompt || "",
-              currentChatModelSettings
+              currentChatModelSettings,
+              uploadedFiles,
+              images,
+              setActionInfo,
+              temporaryChat,
+              messageSource: "copilot",
+              requireMcpApproval: mcpHumanInLoop,
+              webSearchAsTool: useAgentWebSearch
             }
           )
         }
@@ -365,7 +379,8 @@ export const useMessage = () => {
       const abortController = new AbortController()
       await onSubmit({
         message: message,
-        image: currentHumanMessage.images[0] || "",
+        image: currentHumanMessage.images?.[0] || "",
+        images: currentHumanMessage.images || [],
         isRegenerate: true,
         messages: previousMessages,
         memory: previousHistory,
@@ -451,6 +466,7 @@ export const useMessage = () => {
     createChatBranch,
     temporaryChat,
     setTemporaryChat,
-    sidepanelTemporaryChat
+    sidepanelTemporaryChat,
+    actionInfo
   }
 }

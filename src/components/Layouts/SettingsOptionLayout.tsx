@@ -7,12 +7,14 @@ import {
   InfoIcon,
   CombineIcon,
   ChromeIcon,
-  CpuIcon
+  CpuIcon,
+  BrainIcon,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { Link, useLocation } from "react-router-dom"
 import { OllamaIcon } from "../Icons/Ollama"
 import { LinkComponent } from "./LinkComponent"
+import { MCPIcon } from "../Icons/MCPIcon"
 
 export const SettingsLayout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation()
@@ -59,6 +61,20 @@ export const SettingsLayout = ({ children }: { children: React.ReactNode }) => {
                     name={t("openai:settings")}
                     icon={CpuIcon}
                     current={location.pathname}
+                  />
+                  <LinkComponent
+                    href="/settings/mcp"
+                    name={t("mcpSettings.title")}
+                    icon={MCPIcon}
+                    current={location.pathname}
+                    beta
+                  />
+                  <LinkComponent
+                    href="/settings/memory"
+                    name={t("memory.title", "Memory")}
+                    icon={BrainIcon}
+                    current={location.pathname}
+                    beta
                   />
                   <LinkComponent
                     href="/settings/model"

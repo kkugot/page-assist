@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 vi.mock("@/libs/clean-url", () => ({ cleanUrl: (s: string) => s }))
-vi.mock("@/services/search", () => ({
+vi.mock("@/services/features/search", () => ({
   getIsSimpleInternetSearch: vi.fn(),
   totalSearchResults: vi.fn().mockResolvedValue(3),
   getPerplexityApiKey: vi.fn().mockResolvedValue("test-key")
 }))
-vi.mock("@/services/ollama", () => ({
+vi.mock("@/services/ai/ollama", () => ({
   defaultEmbeddingModelForRag: vi.fn().mockResolvedValue("embed-model"),
   getOllamaURL: vi.fn().mockResolvedValue("http://localhost:11434"),
   getSelectedModel: vi.fn().mockResolvedValue("llm-model")
@@ -31,11 +31,11 @@ vi.mock("@/models/embedding", () => ({
   pageAssistEmbeddingModel: vi.fn().mockResolvedValue({})
 }))
 
-vi.mock("@langchain/classic/vectorstores/memory", () => {
+vi.mock("@/libs/PageAssistVectorStore", () => {
   return {
-    MemoryVectorStore: class {
+    PageAssistVectorStore: class {
       addDocuments = vi.fn().mockResolvedValue(undefined)
-      similaritySearch = vi.fn().mockResolvedValue([
+      similaritySearchKB = vi.fn().mockResolvedValue([
         { pageContent: "chunk A", metadata: { url: "https://a.example" } },
         { pageContent: "chunk B", metadata: { url: "https://b.example" } }
       ])
@@ -47,7 +47,7 @@ import { perplexityAPISearch } from "../perplexity-api"
 import {
   getIsSimpleInternetSearch,
   getPerplexityApiKey
-} from "@/services/search"
+} from "@/services/features/search"
 
 const mockFetch = (
   results: Array<{ title: string; url: string; snippet: string }>

@@ -8,6 +8,8 @@ import {
   getCopilotPromptsEnabledState,
   type CustomCopilotPrompt
 } from "@/services/browser/application"
+import { startMcpOAuthFlow, disconnectMcpOAuth } from "@/libs/mcp/oauth-flow"
+import { McpServerDb } from "@/db/dexie/mcp"
 
 export default defineBackground({
   main() {
@@ -172,6 +174,17 @@ export default defineBackground({
         await streamDownload(ollamaURL, message.modelName)
       } else if (message.type === "cancel_download") {
         cancelDownload()
+      } else if (message.type === "mcp_oauth_start") {
+        const mcpDb = new McpServerDb()
+        const server = await mcpDb.getById(message.serverId)
+        if (!server) {
+          return Promise.resolve({ success: false, error: "Server not found" })
+        }
+        const result = await startMcpOAuthFlow(server)
+        return Promise.resolve(result)
+      } else if (message.type === "mcp_oauth_disconnect") {
+        await disconnectMcpOAuth(message.serverId)
+        return Promise.resolve({ success: true })
       } else if (message.type === "youtube_summarize") {
         if (process.env.TARGET === "firefox") {
           if (sender.tab?.id) {
@@ -384,6 +397,16 @@ export default defineBackground({
       }
     })
 
+    const sidePanelClose =
+      typeof chrome !== "undefined"
+        ? ((chrome.sidePanel as any)?.close as
+            | ((options: {
+                tabId?: number
+                windowId?: number
+              }) => Promise<void>)
+            | undefined)
+        : undefined
+
     browser.commands.onCommand.addListener((command) => {
       switch (command) {
         case "execute_side_panel":
@@ -394,8 +417,32 @@ export default defineBackground({
               { active: true, currentWindow: true },
               async (tabs) => {
                 const tab = tabs[0]
+                if (!tab?.id) return
+
+                if (isCopilotRunning && sidePanelClose) {
+                  const closeAttempts: Array<{
+                    tabId?: number
+                    windowId?: number
+                  }> = []
+                  if (tab.windowId !== undefined) {
+                    closeAttempts.push({ windowId: tab.windowId })
+                  }
+                  closeAttempts.push({ tabId: tab.id })
+
+                  for (const attempt of closeAttempts) {
+                    try {
+                      await sidePanelClose(attempt)
+                      return
+                    } catch (e) {
+                    }
+                  }
+                  console.warn(
+                    "Side panel reported open but close() rejected for both windowId and tabId"
+                  )
+                }
+
                 chrome.sidePanel.open({
-                  tabId: tab.id!
+                  tabId: tab.id
                 })
               }
             )

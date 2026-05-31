@@ -38,6 +38,11 @@ type ModelSettings = {
   useMlock?: boolean
   reasoningEffort?: any
   thinking?: boolean | "low" | "medium" | "high"
+  /**
+   * Raw JSON string of extra parameters merged into the request body for
+   * OpenAI-compatible models. Stored per-model, not in global defaults.
+   */
+  customBody?: string
 }
 
 const keys = [

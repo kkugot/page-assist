@@ -1,4 +1,5 @@
 import { ChatDocuments } from "@/models/ChatTypes"
+import { ChatMessageKind, McpToolCall } from "@/libs/mcp/types"
 
 type WebSearch = {
   search_engine: string
@@ -25,4 +26,10 @@ export type Message = {
   documents?: ChatDocuments
   // UI-only metadata for soft-reveal streaming; not persisted
   uiStreaming?: { lastFlushedAt?: number }
+  messageKind?: ChatMessageKind
+  toolCalls?: McpToolCall[]
+  toolCallId?: string
+  toolName?: string
+  toolServerName?: string
+  toolError?: boolean
 }

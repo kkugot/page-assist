@@ -4,6 +4,7 @@ import { en } from "./lang/en";
 import { pt } from "./lang/pt";
 import { fr } from "./lang/fr";
 import { uk } from "./lang/uk";
+import { cz } from "./lang/cz";
 import { ru } from "./lang/ru";
 import { ml } from "./lang/ml";
 import { zh } from "./lang/zh";
@@ -18,6 +19,7 @@ import { no } from "./lang/no";
 import { sv } from "./lang/sv";
 import { ko } from "./lang/ko";
 import { ar } from "./lang/ar"
+import { he } from "./lang/he"
 
 
 i18n
@@ -46,7 +48,10 @@ i18n
             de: de,
             sv: sv,
             ko: ko,
-            ar: ar
+            ar: ar,
+            he: he,
+            cz: cz,
+            "cs-CZ": cz
         },
         fallbackLng: "en",
         lng: localStorage.getItem("i18nextLng") || "en",

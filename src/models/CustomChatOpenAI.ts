@@ -1,22 +1,26 @@
 import { type ClientOptions, OpenAI as OpenAIClient, } from "openai"
 import {
     AIMessage,
+    AIMessageChunk,
     BaseMessage,
     ChatMessage,
     ChatMessageChunk,
     FunctionMessageChunk,
     HumanMessageChunk,
     SystemMessageChunk,
+    ToolMessage,
     ToolMessageChunk
 } from "@langchain/core/messages"
 import { ChatGenerationChunk, ChatResult } from "@langchain/core/outputs"
 import { getEnvironmentVariable } from "@langchain/core/utils/env"
 import {
     BaseChatModel,
-    BaseChatModelParams
+    BaseChatModelParams,
+    type BindToolsInput
 } from "@langchain/core/language_models/chat_models"
 import { convertToOpenAITool } from "@langchain/core/utils/function_calling"
 import {
+    Runnable,
     RunnablePassthrough,
     RunnableSequence
 } from "@langchain/core/runnables"
@@ -26,6 +30,7 @@ import {
 } from "@langchain/core/output_parsers"
 import { JsonOutputKeyToolsParser } from "@langchain/core/output_parsers/openai_tools"
 import { wrapOpenAIClientError } from "./utils/openai.js"
+import { CustomAIMessageChunk } from "./CustomAIMessageChunk"
 import {
     ChatOpenAICallOptions,
     getEndpoint,
@@ -33,9 +38,11 @@ import {
     OpenAICoreRequestOptions
 } from "@langchain/openai"
 import { CallbackManagerForLLMRun } from "@langchain/core/callbacks/manager"
-import { TokenUsage } from "@langchain/core/language_models/base"
+import {
+    BaseLanguageModelInput,
+    TokenUsage
+} from "@langchain/core/language_models/base"
 import { LegacyOpenAIInput } from "./types.js"
-import { CustomAIMessageChunk } from "./CustomAIMessageChunk.js"
 
 type OpenAIRoleEnum = "system" | "assistant" | "user" | "function" | "tool"
 type ReasoningEffort = 'low' | 'medium' | 'high' | null
@@ -83,15 +90,30 @@ function openAIResponseToChatMessage(
     message: OpenAIClient.Chat.Completions.ChatCompletionMessage
 ) {
     switch (message.role) {
-        case "assistant":
-            return new AIMessage({
-                content: message.content || "",
-                additional_kwargs: {
-                    // function_call: message.function_call,
-                    // tool_calls: message.tool_calls
-                    // reasoning_content: message?.reasoning_content || null
-                }
-            })
+        case "assistant": {
+            if (message.tool_calls?.length) {
+                return new AIMessage({
+                    content: message.content || "",
+                    tool_calls: message.tool_calls.map((tc) => {
+                      const fn = (tc as any).function || {}
+
+                      return {
+                        id: tc.id,
+                        name: fn.name,
+                        args: (() => {
+                            try {
+                                return JSON.parse(fn.arguments || "{}")
+                            } catch {
+                                return {}
+                            }
+                        })(),
+                        type: "tool_call" as const
+                      }
+                    })
+                })
+            }
+            return new AIMessage({ content: message.content || "" })
+        }
         default:
             return new ChatMessage(message.content || "", message.role ?? "unknown")
     }
@@ -110,23 +132,40 @@ function _convertDeltaToMessageChunk(
         additional_kwargs = {
             function_call: delta.function_call
         }
-    } else if (delta?.tool_calls) {
-        additional_kwargs = {
-            tool_calls: delta.tool_calls
-        }
     } else {
         additional_kwargs = {}
+    }
+
+    if (reasoning_content != null) {
+        additional_kwargs.reasoning_content = reasoning_content
+    }
+
+    if (delta?.reasoning_details != null) {
+        additional_kwargs.reasoning_details = delta.reasoning_details
+    }
+
+    // Streaming tool call deltas — use proper tool_call_chunks instead of additional_kwargs
+    if (delta?.tool_calls) {
+        return new AIMessageChunk({
+            content,
+            additional_kwargs,
+            // Let LangChain collapse streamed tool deltas into final tool_calls.
+            tool_call_chunks: delta.tool_calls.map((tc: any) => ({
+                id: tc.id,
+                name: tc.function?.name,
+                args: tc.function?.arguments ?? "",
+                index: tc.index,
+                type: "tool_call_chunk" as const
+            }))
+        })
     }
     if (role === "user") {
         return new HumanMessageChunk({ content })
     } else if (role === "assistant") {
-        return new CustomAIMessageChunk({
+        return new AIMessageChunk({
             content,
-            additional_kwargs: {
-                ...additional_kwargs,
-                reasoning_content
-            }
-        }) as any
+            additional_kwargs
+        })
     } else if (role === "system") {
         return new SystemMessageChunk({ content })
     } else if (role === "function") {
@@ -145,18 +184,91 @@ function _convertDeltaToMessageChunk(
         return new ChatMessageChunk({ content, role })
     }
 }
-function convertMessagesToOpenAIParams(messages: any[]) {
-    // TODO: Function messages do not support array content, fix cast
-    return messages.map((message) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const completionParam: { role: string; content: string; name?: string } = {
-            role: messageToOpenAIRole(message),
-            content: message.content
-        }
-        if (message.name != null) {
-            completionParam.name = message.name
+function isDeepSeekProvider(modelName?: string, baseURL?: string): boolean {
+    const model = (modelName || "").toLowerCase()
+    const url = (baseURL || "").toLowerCase()
+    return model.includes("deepseek") || url.includes("deepseek")
+}
+
+function convertMessagesToOpenAIParams(
+    messages: BaseMessage[],
+    options?: { includeReasoningContent?: boolean }
+) {
+    const includeReasoningContent = options?.includeReasoningContent === true
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return messages.map((message): any => {
+        const role = messageToOpenAIRole(message)
+
+        // ToolMessage → { role: "tool", content, tool_call_id }
+        if (role === "tool") {
+            const toolMsg = message as ToolMessage
+            return {
+                role: "tool",
+                content: typeof toolMsg.content === "string"
+                    ? toolMsg.content
+                    : JSON.stringify(toolMsg.content),
+                tool_call_id: toolMsg.tool_call_id ?? "",
+            }
         }
 
+        // AI message with tool_calls → include tool_calls array
+        if (role === "assistant") {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const aiMsg = message as any
+            // DeepSeek V4 thinking mode rejects requests if reasoning_content from a
+            // prior assistant turn is dropped. Other providers may reject the unknown
+            // field, so gate forwarding behind a provider check.
+            const reasoningContent = includeReasoningContent
+                ? aiMsg.additional_kwargs?.reasoning_content ?? undefined
+                : undefined
+            if (aiMsg.tool_calls?.length) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const result: any = {
+                    role: "assistant",
+                    content: typeof aiMsg.content === "string" ? aiMsg.content : null,
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    tool_calls: aiMsg.tool_calls.map((tc: any) => ({
+                        id: tc.id || "",
+                        type: "function",
+                        function: {
+                            name: tc.name,
+                            arguments: typeof tc.args === "string"
+                                ? tc.args
+                                : JSON.stringify(tc.args ?? {}),
+                        },
+                    })),
+                }
+                if (reasoningContent) {
+                    result.reasoning_content = reasoningContent
+                }
+                return result
+            }
+            if (reasoningContent) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const completionParam: any = {
+                    role,
+                    content: message.content,
+                    reasoning_content: reasoningContent,
+                }
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                if ((message as any).name != null) {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    completionParam.name = (message as any).name
+                }
+                return completionParam
+            }
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const completionParam: any = {
+            role,
+            content: message.content,
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if ((message as any).name != null) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            completionParam.name = (message as any).name
+        }
         return completionParam
     })
 }
@@ -508,7 +620,12 @@ export class CustomChatOpenAI<
             yield* this._streamResponseChunksResponses(messages, options, runManager)
             return
         }
-        const messagesMapped = convertMessagesToOpenAIParams(messages)
+        const messagesMapped = convertMessagesToOpenAIParams(messages, {
+            includeReasoningContent: isDeepSeekProvider(
+                this.modelName,
+                this.clientConfig?.baseURL
+            )
+        })
         const params = {
             ...this.invocationParams(options),
             messages: messagesMapped,
@@ -582,7 +699,12 @@ export class CustomChatOpenAI<
     ): Promise<ChatResult> {
         const tokenUsage: TokenUsage = {}
         const params = this.invocationParams(options)
-        const messagesMapped: any[] = convertMessagesToOpenAIParams(messages)
+        const messagesMapped: any[] = convertMessagesToOpenAIParams(messages, {
+            includeReasoningContent: isDeepSeekProvider(
+                this.modelName,
+                this.clientConfig?.baseURL
+            )
+        })
         if (params.stream) {
             const stream = this._streamResponseChunks(messages, options, runManager)
             const finalChunks: Record<number, ChatGenerationChunk> = {}
@@ -842,7 +964,12 @@ export class CustomChatOpenAI<
             }
         } catch (e) {
             // If Responses API fails, gracefully fallback to completions stream
-            const messagesMapped = convertMessagesToOpenAIParams(messages)
+            const messagesMapped = convertMessagesToOpenAIParams(messages, {
+                includeReasoningContent: isDeepSeekProvider(
+                    this.modelName,
+                    this.clientConfig?.baseURL
+                )
+            })
             const params = {
                 ...this.invocationParams(options),
                 messages: messagesMapped,
@@ -909,6 +1036,15 @@ export class CustomChatOpenAI<
     }
     _llmType() {
         return "openai"
+    }
+    override bindTools(
+        tools: BindToolsInput[],
+        kwargs?: Partial<this["ParsedCallOptions"]>
+    ): Runnable<BaseLanguageModelInput, AIMessageChunk, CallOptions> {
+        return this.withConfig({
+            tools: tools.map((tool) => convertToOpenAITool(tool)),
+            ...kwargs
+        } as Partial<CallOptions>)
     }
     /** @ignore */
     _combineLLMOutput(...llmOutputs) {

@@ -14,6 +14,7 @@ import {
   streamChatResponse,
   type StreamConfig
 } from "./sharedStreaming"
+import { STREAM_REVEAL } from "../streamingConfig"
 
 export const searchChatMode = async (
   message: string,

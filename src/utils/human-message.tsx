@@ -1,4 +1,4 @@
-import { isCustomModel } from "@/db/dexie/models"
+import { isCustomModel, isLMStudioModel } from "@/db/dexie/models"
 import { HumanMessage, type MessageContent } from "@langchain/core/messages"
 import { processImageForOCR } from "@/utils/ocr"
 import { Storage } from "@plasmohq/storage"
@@ -103,6 +103,23 @@ export const humanMessageFormatter = async ({
 
     // Array content without images or OCR disabled: join text parts
     if (Array.isArray(content)) {
+      if (isLMStudioModel(model)) {
+        return new HumanMessage({
+          content: content.map((c: any) => {
+            if (c.type === "image_url") {
+              return {
+                type: "image_url",
+                image_url: {
+                  url: c.image_url
+                }
+              }
+            }
+
+            return c
+          })
+        })
+      }
+
       return new HumanMessage({
         content:
           (content as any[])

@@ -5,12 +5,15 @@ import { getPromptById } from "@/db/dexie/helpers"
 import { generateHistory } from "@/utils/generate-history"
 import { pageAssistModel } from "@/models"
 import { humanMessageFormatter } from "@/utils/human-message"
+import { runMcpNormalChatMode } from "@/libs/mcp/normal-chat"
+import { McpBootstrapError } from "@/libs/mcp/errors"
 import { systemPromptFormatter } from "@/utils/system-message"
 import {
   CURSOR,
   streamChatResponse,
   type StreamConfig
 } from "./sharedStreaming"
+import { STREAM_REVEAL } from "../streamingConfig"
 
 export const normalChatMode = async (
   message: string,
@@ -33,7 +36,13 @@ export const normalChatMode = async (
     setAbortController,
     historyId,
     setHistoryId,
-    uploadedFiles
+    uploadedFiles,
+    images,
+    setActionInfo,
+    temporaryChat,
+    requireMcpApproval,
+    messageSource,
+    webSearchAsTool
   }: {
     selectedModel: string
     useOCR: boolean
@@ -51,9 +60,86 @@ export const normalChatMode = async (
     historyId: string | null
     setHistoryId: (id: string) => void
     uploadedFiles?: any[]
+    images?: string[]
+    setActionInfo?: (value: any) => void
+    temporaryChat?: boolean
+    requireMcpApproval?: boolean
+    messageSource?: "copilot" | "web-ui"
+    webSearchAsTool?: boolean
   }
 ) => {
   console.log("Using normalChatMode")
+  setStreaming(true)
+  try {
+    const handledByMcp = await runMcpNormalChatMode(
+      message,
+      image,
+      isRegenerate,
+      messages,
+      history,
+      signal,
+      {
+        selectedModel,
+        useOCR,
+        selectedSystemPrompt,
+        currentChatModelSettings,
+        setMessages,
+        setHistory,
+        setIsProcessing,
+        setStreaming,
+        setActionInfo: setActionInfo || (() => {}),
+        historyId,
+        setHistoryId,
+        uploadedFiles,
+        images,
+        temporaryChat,
+        requireMcpApproval,
+        messageSource,
+        webSearchAsTool
+      }
+    )
+
+    if (handledByMcp) {
+      return
+    }
+  } catch (error) {
+    if (error instanceof McpBootstrapError) {
+      const processedImages = (images || []).map((currentImage) => {
+        if (currentImage.length > 0 && !currentImage.startsWith("data:image")) {
+          return `data:image/jpeg;base64,${currentImage.split(",")[1]}`
+        }
+
+        return currentImage
+      })
+      const imagesToSave =
+        processedImages.length > 0 ? processedImages : image ? [image] : []
+
+      const errorSave = await saveMessageOnError({
+        e: error,
+        botMessage: "",
+        history,
+        historyId,
+        image: imagesToSave.length > 0 ? imagesToSave[0] : "",
+        images: imagesToSave,
+        selectedModel,
+        setHistory,
+        setHistoryId,
+        userMessage: message,
+        isRegenerating: isRegenerate,
+        message_source: messageSource
+      })
+
+      if (!errorSave) {
+        throw error
+      }
+
+      setIsProcessing(false)
+      setStreaming(false)
+      return
+    }
+
+    throw error
+  }
   const url = await getOllamaURL()
   let promptId: string | undefined = selectedSystemPrompt
   let promptContent: string | undefined = undefined
